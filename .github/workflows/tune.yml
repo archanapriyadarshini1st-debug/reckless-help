@@ -1,0 +1,33 @@
+name: SPSA tune
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations: { description: "SPSA iterations", default: "400" }
+      pairs:      { description: "game pairs per iteration", default: "8" }
+      only:       { description: "param prefixes, comma separated (empty = all)", default: "lmr_" }
+      tc:         { description: "time control", default: "5+0.05" }
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y unzip clang
+          bash tools/setup.sh work
+      - name: Build stock + tunable engines
+        run: bash tools/build.sh work
+      - name: Tune (stops cleanly before the job limit)
+        run: |
+          timeout 320m python3 tools/spsa.py \
+            --engine "$PWD/work/reckless-spsa" --fastchess "$PWD/work/fastchess/fastchess" \
+            --book "$PWD/work/UHO_Lichess_4852_v1.epd" \
+            --iterations "${{ inputs.iterations }}" --pairs "${{ inputs.pairs }}" \
+            --tc "${{ inputs.tc }}" --only "${{ inputs.only }}" \
+            --state spsa-state.json --out tuned.json || true
+      - uses: actions/upload-artifact@v4
+        with: { name: spsa-result, path: "tuned.json\nspsa-state.json" }
